@@ -10,6 +10,7 @@ Ethylene handles:
 - **Patch Generation**: Create byte-level diffs between file versions
 - **Patch Application**: Apply patches with hash verification
 - **Manifests**: Track versions, checksums, and file actions
+- **Directory Walking**: Diff entire folders, only patch what changed
 
 ## Quick Start
 ```bash
@@ -18,17 +19,23 @@ go build
 ./ethylene apply --patch ./patch --target ./installed
 ```
 
+```bash
+# Patch an entire directory
+./ethylene gen --old ./game_v1/ --new ./game_v2/ --out ./patch --from-version 1.0.0 --to-version 1.1.0
+./ethylene apply --patch ./patch --target ./installed_game/
+```
+
 ## CLI Reference
 
 ### Generate
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--old` | Path to old file | (required) |
-| `--new` | Path to new file | (required) |
-| `--out` | Output directory for patch | `./patch` |
-| `--from-version` | Source version string | `0.0.0` |
-| `--to-version` | Target version string | `0.0.1` |
+| Flag | Description                   | Default |
+|------|-------------------------------|---------|
+| `--old` | Path to old file or directory | (required) |
+| `--new` | Path to new file or directory | (required) |
+| `--out` | Output directory for patch    | `./patch` |
+| `--from-version` | Source version string         | `0.0.0` |
+| `--to-version` | Target version string         | `0.0.1` |
 ```bash
 ./ethylene gen --old game.exe --new game_v2.exe --out ./patch --from-version 1.0.0 --to-version 1.1.0
 ```
@@ -65,11 +72,11 @@ Patches include a `manifest.json`:
 
 ### Actions
 
-| Action | Description |
-|--------|-------------|
+| Action | Description                        |
+|--------|------------------------------------|
 | `patch` | Apply binary diff to existing file |
-| `add` | Add new file (not yet implemented) |
-| `delete` | Remove file |
+| `add` | Copy new file into target          |
+| `delete` | Remove file from target            |
 
 ### Verification
 
@@ -92,9 +99,28 @@ echo "AAAB..." > new.txt   # 1 byte changed to B
 ./ethylene apply --patch ./patch --target .
 ```
 
+## Directory Example
+```bash
+# Generate
+./ethylene gen --old game_v1/ --new game_v2/ --out ./patch
+
+# Output:
+#   2 patched, 1 added, 1 deleted, 1 unchanged
+#
+# patch/
+#   manifest.json
+#   assets/player.dat.patch    (189 bytes)
+#   config/settings.ini.patch  (184 bytes)
+#   new/maps/level5.map        (33 bytes)
+
+# Apply
+./ethylene apply --patch ./patch --target ./installed_game/
+```
+
 ## Dependencies
 
-- [Potassium](https://github.com/bananalabs-oss/potassium) - Diff and manifest libraries
+- [Potassium](https://github.com/bananalabs-oss/potassium) `diff` - Binary diffing (bsdiff)
+- [Potassium](https://github.com/bananalabs-oss/potassium) `manifest` - Manifest handling and file hashing
 
 ## License
 
