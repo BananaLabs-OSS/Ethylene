@@ -55,11 +55,8 @@ func runApply(cmd *cobra.Command, args []string) error {
 			}
 
 			patchFile := filepath.Join(patchPath, filepath.FromSlash(f.PatchFile))
-			if err != nil {
-				return fmt.Errorf("cannot read patch for %s: %w", f.Path, err)
-			}
 
-			if err := diff.Apply(targetFile, patchFile, targetFile); err != nil {
+			if err := applyPatch(targetFile, patchFile, f.Algorithm); err != nil {
 				return fmt.Errorf("failed to patch %s: %w", f.Path, err)
 			}
 
@@ -136,6 +133,37 @@ func runApply(cmd *cobra.Command, args []string) error {
 	fmt.Printf("\nPatch applied successfully!\n")
 	fmt.Printf("  %d patched, %d added, %d deleted\n", patched, added, deleted)
 	return nil
+}
+
+// applyPatch dispatches to the correct engine based on the algorithm field.
+// Empty or "bsdiff" uses bsdiff. "hdiff" shells out to hpatchz.
+func applyPatch(targetFile, patchFile, algo string) error {
+	switch algo {
+	case "hdiff":
+		// hpatchz writes to a new file — we use a temp, then replace
+		tmpFile := targetFile + ".hdiff_tmp"
+		if err := diff.ApplyHDiff(targetFile, patchFile, tmpFile); err != nil {
+			os.Remove(tmpFile)
+			return err
+		}
+		// Replace original with patched version
+		if err := os.Remove(targetFile); err != nil {
+			os.Remove(tmpFile)
+			return fmt.Errorf("failed to remove old file: %w", err)
+		}
+		return os.Rename(tmpFile, targetFile)
+	default:
+		// bsdiff (or empty for backward compatibility with old manifests)
+		return diff.Apply(targetFile, patchFile, targetFile)
+	}
+}
+
+// algorithmName returns a display name for the algorithm field.
+func algorithmName(algo string) string {
+	if algo == "" || algo == "bsdiff" {
+		return "bsdiff"
+	}
+	return algo
 }
 
 // copyFile copies a file from src to dst

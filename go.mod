@@ -3,7 +3,7 @@ module github.com/bananalabs-oss/ethylene
 go 1.25.6
 
 require (
-	github.com/bananalabs-oss/potassium v0.2.0
+	github.com/bananalabs-oss/potassium v0.3.0
 	github.com/spf13/cobra v1.10.2
 )
 

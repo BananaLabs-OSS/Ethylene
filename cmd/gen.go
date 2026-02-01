@@ -17,6 +17,7 @@ var (
 	outPath     string
 	fromVersion string
 	toVersion   string
+	algorithm   string
 )
 
 var genCmd = &cobra.Command{
@@ -31,12 +32,18 @@ func init() {
 	genCmd.Flags().StringVar(&outPath, "out", "./patch", "Output path for patch")
 	genCmd.Flags().StringVar(&fromVersion, "from-version", "0.0.0", "Source version")
 	genCmd.Flags().StringVar(&toVersion, "to-version", "0.0.1", "Target version")
+	genCmd.Flags().StringVar(&algorithm, "algorithm", "bsdiff", "Diff algorithm: bsdiff or hdiff")
 	genCmd.MarkFlagRequired("old")
 	genCmd.MarkFlagRequired("new")
 	rootCmd.AddCommand(genCmd)
 }
 
 func runGen(cmd *cobra.Command, args []string) error {
+	// Validate algorithm
+	if algorithm != "bsdiff" && algorithm != "hdiff" {
+		return fmt.Errorf("unknown algorithm %q: must be bsdiff or hdiff", algorithm)
+	}
+
 	oldInfo, err := os.Stat(oldPath)
 	if err != nil {
 		return fmt.Errorf("cannot access old path: %w", err)
@@ -56,6 +63,21 @@ func runGen(cmd *cobra.Command, args []string) error {
 		return genDirectory(oldPath, newPath, outPath, fromVersion, toVersion)
 	}
 	return genFile(oldPath, newPath, outPath, fromVersion, toVersion)
+}
+
+// generatePatch creates a patch file using the selected algorithm.
+// bsdiff returns bytes (we write them), hdiff writes directly to disk.
+func generatePatch(oldFile, newFile, patchFilePath string) error {
+	switch algorithm {
+	case "hdiff":
+		return diff.GenerateHDiff(oldFile, newFile, patchFilePath)
+	default:
+		patchBytes, err := diff.Generate(oldFile, newFile)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(patchFilePath, patchBytes, 0644)
+	}
 }
 
 // genFile handles single-file patch generation (existing v0.1.0 behavior)
@@ -96,6 +118,7 @@ func genFile(oldFile, newFile, outDir, fromVer, toVer string) error {
 		OldHash:   oldHash,
 		NewHash:   newHash,
 		PatchFile: patchFileName,
+		Algorithm: algorithm,
 	})
 
 	// Save manifest
@@ -186,23 +209,18 @@ func genDirectory(oldDir, newDir, outDir, fromVer, toVer string) error {
 			continue
 		}
 
-		// File changed — generate byte-level patch
+		// File changed — generate patch
 		oldFilePath := filepath.Join(oldDir, filepath.FromSlash(relPath))
 		newFilePath := filepath.Join(newDir, filepath.FromSlash(relPath))
 
-		patchBytes, err := diff.Generate(oldFilePath, newFilePath)
-		if err != nil {
-			return fmt.Errorf("failed to diff %s: %w", relPath, err)
-		}
-
-		// Preserve directory structure in patch output
 		patchFileName := relPath + ".patch"
 		patchFilePath := filepath.Join(outDir, filepath.FromSlash(patchFileName))
 		if err := os.MkdirAll(filepath.Dir(patchFilePath), 0755); err != nil {
 			return fmt.Errorf("failed to create patch dir: %w", err)
 		}
-		if err := os.WriteFile(patchFilePath, patchBytes, 0644); err != nil {
-			return fmt.Errorf("failed to write patch %s: %w", patchFileName, err)
+
+		if err := generatePatch(oldFilePath, newFilePath, patchFilePath); err != nil {
+			return fmt.Errorf("failed to diff %s: %w", relPath, err)
 		}
 
 		m.AddFile(manifest.FileEntry{
@@ -211,6 +229,7 @@ func genDirectory(oldDir, newDir, outDir, fromVer, toVer string) error {
 			OldHash:   oldHash,
 			NewHash:   newHash,
 			PatchFile: patchFileName,
+			Algorithm: algorithm,
 		})
 		patched++
 		fmt.Printf("  Patch:  %s\n", relPath)
@@ -249,7 +268,7 @@ func genDirectory(oldDir, newDir, outDir, fromVer, toVer string) error {
 		fmt.Printf("  Add:    %s\n", relPath)
 	}
 
-	// ── Save manifest ────────────────────────────────────────────────
+	// Save manifest
 	if err := m.Save(filepath.Join(outDir, "manifest.json")); err != nil {
 		return fmt.Errorf("failed to save manifest: %w", err)
 	}
