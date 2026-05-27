@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/bananalabs-oss/potassium/diff"
 	"github.com/bananalabs-oss/potassium/manifest"
@@ -41,6 +42,11 @@ func runApply(cmd *cobra.Command, args []string) error {
 
 	for _, f := range m.Files {
 		targetFile := filepath.Join(targetPath, filepath.FromSlash(f.Path))
+		absTarget, _ := filepath.Abs(targetFile)
+		absRoot, _ := filepath.Abs(targetPath)
+		if !strings.HasPrefix(absTarget, absRoot+string(filepath.Separator)) && absTarget != absRoot {
+			return fmt.Errorf("path traversal blocked: %s", f.Path)
+		}
 
 		switch f.Action {
 		// PATCH: Apply byte-level diff
@@ -55,6 +61,11 @@ func runApply(cmd *cobra.Command, args []string) error {
 			}
 
 			patchFile := filepath.Join(patchPath, filepath.FromSlash(f.PatchFile))
+			absPatch, _ := filepath.Abs(patchFile)
+			absPatchRoot, _ := filepath.Abs(patchPath)
+			if !strings.HasPrefix(absPatch, absPatchRoot+string(filepath.Separator)) && absPatch != absPatchRoot {
+				return fmt.Errorf("path traversal blocked in patch: %s", f.PatchFile)
+			}
 
 			if err := applyPatch(targetFile, patchFile, f.Algorithm); err != nil {
 				return fmt.Errorf("failed to patch %s: %w", f.Path, err)
