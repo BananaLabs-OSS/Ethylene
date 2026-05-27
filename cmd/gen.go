@@ -97,17 +97,11 @@ func genFile(oldFile, newFile, outDir, fromVer, toVer string) error {
 		return fmt.Errorf("failed to hash new file: %w", err)
 	}
 
-	// Generate diff
-	patchBytes, err := diff.Generate(oldPath, newPath)
-	if err != nil {
-		return fmt.Errorf("failed to generate diff: %w", err)
-	}
-
-	// Write patch file
+	// Generate diff using selected algorithm
 	patchFileName := filepath.Base(oldPath) + ".patch"
 	patchFilePath := filepath.Join(outPath, patchFileName)
-	if err := os.WriteFile(patchFilePath, patchBytes, 0644); err != nil {
-		return fmt.Errorf("failed to write patch file: %w", err)
+	if err := generatePatch(oldPath, newPath, patchFilePath); err != nil {
+		return fmt.Errorf("failed to generate diff: %w", err)
 	}
 
 	// Create manifest
