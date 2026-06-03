@@ -42,10 +42,8 @@ func runApply(cmd *cobra.Command, args []string) error {
 
 	for _, f := range m.Files {
 		targetFile := filepath.Join(targetPath, filepath.FromSlash(f.Path))
-		absTarget, _ := filepath.Abs(targetFile)
-		absRoot, _ := filepath.Abs(targetPath)
-		if !strings.HasPrefix(absTarget, absRoot+string(filepath.Separator)) && absTarget != absRoot {
-			return fmt.Errorf("path traversal blocked: %s", f.Path)
+		if err := withinRoot(targetFile, targetPath); err != nil {
+			return fmt.Errorf("path traversal blocked: %s: %w", f.Path, err)
 		}
 
 		switch f.Action {
@@ -57,14 +55,12 @@ func runApply(cmd *cobra.Command, args []string) error {
 			}
 			if currentHash != f.OldHash {
 				return fmt.Errorf("hash mismatch for %s\n  expected: %s\n       got: %s",
-					f.Path, f.OldHash[:16], currentHash[:16])
+					f.Path, short(f.OldHash), short(currentHash))
 			}
 
 			patchFile := filepath.Join(patchPath, filepath.FromSlash(f.PatchFile))
-			absPatch, _ := filepath.Abs(patchFile)
-			absPatchRoot, _ := filepath.Abs(patchPath)
-			if !strings.HasPrefix(absPatch, absPatchRoot+string(filepath.Separator)) && absPatch != absPatchRoot {
-				return fmt.Errorf("path traversal blocked in patch: %s", f.PatchFile)
+			if err := withinRoot(patchFile, patchPath); err != nil {
+				return fmt.Errorf("path traversal blocked in patch: %s: %w", f.PatchFile, err)
 			}
 
 			if err := applyPatch(targetFile, patchFile, f.Algorithm); err != nil {
@@ -78,7 +74,7 @@ func runApply(cmd *cobra.Command, args []string) error {
 			}
 			if newHash != f.NewHash {
 				return fmt.Errorf("post-patch hash mismatch for %s\n  expected: %s\n       got: %s",
-					f.Path, f.NewHash[:16], newHash[:16])
+					f.Path, short(f.NewHash), short(newHash))
 			}
 
 			patched++
@@ -87,6 +83,9 @@ func runApply(cmd *cobra.Command, args []string) error {
 		// ADD: Copy new file into target
 		case manifest.ActionAdd:
 			srcFile := filepath.Join(patchPath, filepath.FromSlash(f.PatchFile))
+			if err := withinRoot(srcFile, patchPath); err != nil {
+				return fmt.Errorf("path traversal blocked in add source: %s: %w", f.PatchFile, err)
+			}
 
 			// Create parent directories if they don't exist
 			if err := os.MkdirAll(filepath.Dir(targetFile), 0755); err != nil {
@@ -104,7 +103,7 @@ func runApply(cmd *cobra.Command, args []string) error {
 			}
 			if newHash != f.NewHash {
 				return fmt.Errorf("hash mismatch for added file %s\n  expected: %s\n       got: %s",
-					f.Path, f.NewHash[:16], newHash[:16])
+					f.Path, short(f.NewHash), short(newHash))
 			}
 
 			added++
@@ -169,12 +168,70 @@ func applyPatch(targetFile, patchFile, algo string) error {
 	}
 }
 
-// algorithmName returns a display name for the algorithm field.
-func algorithmName(algo string) string {
-	if algo == "" || algo == "bsdiff" {
-		return "bsdiff"
+// withinRoot verifies that child resolves to a path inside root, defeating both
+// lexical "../" traversal and symlink-escape. It resolves symlinks on the
+// deepest existing ancestor of child (the leaf itself may not exist yet for an
+// add/patch write), then re-checks the realpath prefix. This also guards the
+// TOCTOU case where a path element is a symlink redirecting the write outside
+// root, because the symlink is dereferenced before the prefix check.
+func withinRoot(child, root string) error {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return err
 	}
-	return algo
+	realRoot, err := filepath.EvalSymlinks(absRoot)
+	if err != nil {
+		// Root must exist; if it can't be resolved, refuse.
+		return err
+	}
+
+	absChild, err := filepath.Abs(child)
+	if err != nil {
+		return err
+	}
+
+	// Resolve symlinks on the deepest ancestor that exists on disk. The
+	// remaining (not-yet-created) suffix is appended lexically — it cannot
+	// itself be a symlink because it does not exist.
+	resolved := absChild
+	suffix := ""
+	for {
+		r, err := filepath.EvalSymlinks(resolved)
+		if err == nil {
+			resolved = r
+			break
+		}
+		if !os.IsNotExist(err) {
+			return err
+		}
+		parent := filepath.Dir(resolved)
+		if parent == resolved {
+			// Reached the volume/filesystem root without finding an
+			// existing ancestor — fall back to the lexical absolute path.
+			resolved = absChild
+			suffix = ""
+			break
+		}
+		suffix = filepath.Join(filepath.Base(resolved), suffix)
+		resolved = parent
+	}
+	if suffix != "" {
+		resolved = filepath.Join(resolved, suffix)
+	}
+
+	if resolved != realRoot && !strings.HasPrefix(resolved, realRoot+string(filepath.Separator)) {
+		return fmt.Errorf("resolves outside root (%s)", resolved)
+	}
+	return nil
+}
+
+// short safely truncates a hash to 16 chars for display. Hash fields come from
+// untrusted JSON, so a naive h[:16] panics on a short/malformed value.
+func short(h string) string {
+	if len(h) <= 16 {
+		return h
+	}
+	return h[:16]
 }
 
 // copyFile copies a file from src to dst
