@@ -78,3 +78,39 @@ func TestWithinRootBlocksSymlinkEscape(t *testing.T) {
 		t.Errorf("withinRoot wrongly rejected a legitimate in-root path: %v", err)
 	}
 }
+
+// TestWithinRootNotYetExistingLeafInside pins the deepest-existing-ancestor +
+// lexical-suffix branch of withinRoot (the "leaf may not exist yet for an
+// add/patch write" case in the doc comment). Cross-platform — no symlink, so
+// it runs on the locked-down Windows audit host too, unlike the symlink test.
+// An add/patch writes to a file that does not exist yet, possibly several dirs
+// deep; that target must still validate as in-root.
+func TestWithinRootNotYetExistingLeafInside(t *testing.T) {
+	root := t.TempDir()
+	for _, rel := range []string{
+		"newfile.bin",                                   // leaf missing, parent = root
+		filepath.Join("newdir", "newfile.bin"),          // parent dir missing too
+		filepath.Join("a", "b", "c", "deep.bin"),        // several missing levels
+	} {
+		child := filepath.Join(root, rel)
+		if err := withinRoot(child, root); err != nil {
+			t.Errorf("withinRoot rejected a not-yet-existing in-root write %q: %v", rel, err)
+		}
+	}
+}
+
+// TestWithinRootNotYetExistingLeafEscapes pins that the suffix branch does NOT
+// become a traversal bypass: a not-yet-existing target whose lexical path
+// climbs out of root must still be rejected. Cross-platform.
+func TestWithinRootNotYetExistingLeafEscapes(t *testing.T) {
+	root := t.TempDir()
+	for _, rel := range []string{
+		filepath.Join("newdir", "..", "..", "escape.bin"),
+		filepath.Join("a", "b", "..", "..", "..", "escape.bin"),
+	} {
+		child := filepath.Join(root, rel)
+		if err := withinRoot(child, root); err == nil {
+			t.Errorf("withinRoot allowed not-yet-existing traversal escape via %q", rel)
+		}
+	}
+}
