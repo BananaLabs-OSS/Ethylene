@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -76,13 +77,13 @@ func generatePatch(oldFile, newFile, patchFilePath string) error {
 		if err != nil {
 			return err
 		}
-		return os.WriteFile(patchFilePath, patchBytes, 0644)
+		return os.WriteFile(patchFilePath, patchBytes, 0o644)
 	}
 }
 
 // genFile handles single-file patch generation (existing v0.1.0 behavior)
 func genFile(oldFile, newFile, outDir, fromVer, toVer string) error {
-	if err := os.MkdirAll(outDir, 0755); err != nil {
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
@@ -160,7 +161,7 @@ func walkDir(root string) (map[string]string, error) {
 // genDirectory handles directory-to-directory patch generation.
 // Walks both trees, compares hashes, and produces patch/add/delete entries.
 func genDirectory(oldDir, newDir, outDir, fromVer, toVer string) error {
-	if err := os.MkdirAll(outDir, 0755); err != nil {
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
@@ -209,7 +210,7 @@ func genDirectory(oldDir, newDir, outDir, fromVer, toVer string) error {
 
 		patchFileName := relPath + ".patch"
 		patchFilePath := filepath.Join(outDir, filepath.FromSlash(patchFileName))
-		if err := os.MkdirAll(filepath.Dir(patchFilePath), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(patchFilePath), 0o755); err != nil {
 			return fmt.Errorf("failed to create patch dir: %w", err)
 		}
 
@@ -240,15 +241,11 @@ func genDirectory(oldDir, newDir, outDir, fromVer, toVer string) error {
 		addFileName := "new/" + relPath
 		destPath := filepath.Join(outDir, filepath.FromSlash(addFileName))
 
-		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 			return fmt.Errorf("failed to create dir for new file: %w", err)
 		}
 
-		data, err := os.ReadFile(srcPath)
-		if err != nil {
-			return fmt.Errorf("failed to read new file %s: %w", relPath, err)
-		}
-		if err := os.WriteFile(destPath, data, 0644); err != nil {
+		if err := copyFileGen(srcPath, destPath); err != nil {
 			return fmt.Errorf("failed to copy new file %s: %w", relPath, err)
 		}
 
@@ -271,4 +268,19 @@ func genDirectory(oldDir, newDir, outDir, fromVer, toVer string) error {
 	fmt.Printf("  %d patched, %d added, %d deleted, %d unchanged\n",
 		patched, added, deleted, unchanged)
 	return nil
+}
+
+func copyFileGen(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, in)
+	return err
 }

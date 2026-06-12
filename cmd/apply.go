@@ -38,6 +38,40 @@ func runApply(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Applying patch: %s -> %s\n", m.FromVersion, m.ToVersion)
 
+	// Pre-validation: verify all preconditions before mutating anything.
+	// This makes the operation fail-fast instead of leaving the target
+	// directory in a partially-patched state on error.
+	for _, f := range m.Files {
+		targetFile := filepath.Join(targetPath, filepath.FromSlash(f.Path))
+		if err := withinRoot(targetFile, targetPath); err != nil {
+			return fmt.Errorf("path traversal blocked (pre-check): %s: %w", f.Path, err)
+		}
+		patchFile := filepath.Join(patchPath, filepath.FromSlash(f.PatchFile))
+		if f.PatchFile != "" {
+			if err := withinRoot(patchFile, patchPath); err != nil {
+				return fmt.Errorf("path traversal blocked in patch (pre-check): %s: %w", f.PatchFile, err)
+			}
+		}
+		switch f.Action {
+		case manifest.ActionPatch:
+			currentHash, err := manifest.HashFile(targetFile)
+			if err != nil {
+				return fmt.Errorf("pre-check: cannot read %s: %w", f.Path, err)
+			}
+			if currentHash != f.OldHash {
+				return fmt.Errorf("pre-check: hash mismatch for %s\n  expected: %s\n       got: %s",
+					f.Path, short(f.OldHash), short(currentHash))
+			}
+		case manifest.ActionDelete:
+			if f.OldHash != "" {
+				currentHash, err := manifest.HashFile(targetFile)
+				if err == nil && currentHash != f.OldHash {
+					return fmt.Errorf("pre-check: hash mismatch for %s before delete", f.Path)
+				}
+			}
+		}
+	}
+
 	var patched, added, deleted int
 
 	for _, f := range m.Files {
