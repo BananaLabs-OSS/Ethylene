@@ -87,27 +87,27 @@ func genFile(oldFile, newFile, outDir, fromVer, toVer string) error {
 	}
 
 	// Hash old and new files
-	oldHash, err := manifest.HashFile(oldPath)
+	oldHash, err := manifest.HashFile(oldFile)
 	if err != nil {
 		return fmt.Errorf("failed to hash old file: %w", err)
 	}
 
-	newHash, err := manifest.HashFile(newPath)
+	newHash, err := manifest.HashFile(newFile)
 	if err != nil {
 		return fmt.Errorf("failed to hash new file: %w", err)
 	}
 
 	// Generate diff using selected algorithm
-	patchFileName := filepath.Base(oldPath) + ".patch"
-	patchFilePath := filepath.Join(outPath, patchFileName)
-	if err := generatePatch(oldPath, newPath, patchFilePath); err != nil {
+	patchFileName := filepath.Base(oldFile) + ".patch"
+	patchFilePath := filepath.Join(outDir, patchFileName)
+	if err := generatePatch(oldFile, newFile, patchFilePath); err != nil {
 		return fmt.Errorf("failed to generate diff: %w", err)
 	}
 
 	// Create manifest
-	m := manifest.New(fromVersion, toVersion)
+	m := manifest.New(fromVer, toVer)
 	m.AddFile(manifest.FileEntry{
-		Path:      filepath.Base(oldPath),
+		Path:      filepath.Base(oldFile),
 		Action:    manifest.ActionPatch,
 		OldHash:   oldHash,
 		NewHash:   newHash,
