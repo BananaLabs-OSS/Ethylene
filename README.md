@@ -170,7 +170,7 @@ Gen runs once on the build server. Apply is ~90 seconds regardless of patch size
 ./ethylene gen --old game_v1/ --new game_v2/ --out ./patch --algorithm hdiff
 
 # Output:
-#   Scanning old directory... (algorithm: hdiff)
+#   Scanning old directory...
 #     Found 4 files
 #   Scanning new directory...
 #     Found 4 files
@@ -179,7 +179,7 @@ Gen runs once on the build server. Apply is ~90 seconds regardless of patch size
 #   Patch:  config/settings.ini
 #   Add:    maps/level5.map
 #
-#   Patch generated (hdiff): 1.0.0 -> 1.1.0
+#   Patch generated: 1.0.0 -> 1.1.0
 #     2 patched, 1 added, 1 deleted, 1 unchanged
 
 ./ethylene apply --patch ./patch --target ./installed_game/
@@ -196,14 +196,6 @@ GOOS=windows GOARCH=amd64 go build -o ethylene.exe .
 GOOS=linux GOARCH=amd64 go build -o ethylene .
 ```
 
-Or use the build script:
-```bash
-# PowerShell
-.\scripts\build.ps1
-
-# Bash
-./scripts/build.sh
-```
 
 ## Use Cases
 
