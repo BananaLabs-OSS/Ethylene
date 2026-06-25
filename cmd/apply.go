@@ -62,6 +62,13 @@ func runApply(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("pre-check: hash mismatch for %s\n  expected: %s\n       got: %s",
 					f.Path, short(f.OldHash), short(currentHash))
 			}
+		case manifest.ActionAdd:
+			// Verify the source file in the patch bundle exists before we start
+			// mutating the target. Without this, a missing add-source is only
+			// caught mid-apply, after patches/deletes have already run.
+			if _, err := os.Stat(patchFile); err != nil {
+				return fmt.Errorf("pre-check: add source missing for %s: %w", f.PatchFile, err)
+			}
 		case manifest.ActionDelete:
 			if f.OldHash != "" {
 				currentHash, err := manifest.HashFile(targetFile)
