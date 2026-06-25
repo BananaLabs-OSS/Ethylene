@@ -189,7 +189,7 @@ func genDirectory(oldDir, newDir, outDir, fromVer, toVer string) error {
 			// File was removed in the new version
 			m.AddFile(manifest.FileEntry{
 				Path:    relPath,
-				Action:  "delete",
+				Action:  manifest.ActionDelete,
 				OldHash: oldHash,
 			})
 			deleted++
@@ -250,7 +250,7 @@ func genDirectory(oldDir, newDir, outDir, fromVer, toVer string) error {
 
 		m.AddFile(manifest.FileEntry{
 			Path:      relPath,
-			Action:    "add",
+			Action:    manifest.ActionAdd,
 			NewHash:   newHash,
 			PatchFile: addFileName,
 		})
