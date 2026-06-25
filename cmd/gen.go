@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -245,7 +244,7 @@ func genDirectory(oldDir, newDir, outDir, fromVer, toVer string) error {
 			return fmt.Errorf("failed to create dir for new file: %w", err)
 		}
 
-		if err := copyFileGen(srcPath, destPath); err != nil {
+		if err := copyFile(srcPath, destPath); err != nil {
 			return fmt.Errorf("failed to copy new file %s: %w", relPath, err)
 		}
 
@@ -270,17 +269,3 @@ func genDirectory(oldDir, newDir, outDir, fromVer, toVer string) error {
 	return nil
 }
 
-func copyFileGen(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	_, err = io.Copy(out, in)
-	return err
-}
